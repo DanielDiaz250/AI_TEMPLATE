@@ -48,8 +48,28 @@ def get_or_create_session(session_id: str, user_id: str) -> ChatSession:
         sessions_db[session_id] = ChatSession(session_id=session_id, user_id=user_id)
     return sessions_db[session_id]
 
-@chat_router.post("/v1/predict", response_model=ExecuteChatRAGOutput, status_code=status.HTTP_200_OK)
+@chat_router.post(
+    "/v1/predict", 
+    response_model=ExecuteChatRAGOutput, 
+    status_code=status.HTTP_200_OK,
+    summary="Consultar al Agente Conversacional RAG",
+    description=(
+        "Recibe el mensaje del usuario, recupera fragmentos pertinentes de la base de datos "
+        "vectorial ChromaDB de acuerdo a la estrategia seleccionada (vector, hybrid, query_expansion, "
+        "parent_child) con opción de re-ordenamiento (Reranking) de LLM, y genera una respuesta "
+        "estructurada en formato Markdown.\n\n"
+        "**Evaluación Asíncrona (LLM-as-a-Judge)**: Al retornar la respuesta, dispara de forma asíncrona "
+        "tres evaluaciones automatizadas (Fidelidad, Relevancia de Respuesta y Relevancia del Contexto) "
+        "registrando los scores en Langfuse Cloud de manera no bloqueante."
+    ),
+    response_description="Respuesta estructurada del agente conversacional que contiene trace_id y contexto recuperado."
+)
 async def chat_endpoint(payload: ExecuteChatRAGInput, background_tasks: BackgroundTasks):
+    """
+    Controlador HTTP de FastAPI para procesar consultas de chat técnico.
+    Inicializa o recupera la sesión del usuario, propaga atributos globales a Langfuse y
+    encola la evaluación de la tríada de RAG de forma asíncrona en segundo plano.
+    """
     try:
         session = get_or_create_session(payload.session_id, payload.user_id)
         with propagate_attributes(
@@ -80,8 +100,21 @@ async def chat_endpoint(payload: ExecuteChatRAGInput, background_tasks: Backgrou
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Fallo en IA.")
 
 
-@chat_router.post("/v1/feedback", status_code=status.HTTP_200_OK)
+@chat_router.post(
+    "/v1/feedback", 
+    status_code=status.HTTP_200_OK,
+    summary="Registrar Feedback Manual del Usuario",
+    description=(
+        "Permite que la interfaz de usuario (frontend) registre una calificación positiva (1 para 👍) "
+        "o negativa (0 o -1 para 👎) asociada de forma inmediata a la traza identificada por trace_id "
+        "en Langfuse Cloud, conviviendo directamente con las evaluaciones automáticas."
+    )
+)
 async def user_feedback_endpoint(payload: RecordUserFeedbackInput):
+    """
+    Controlador HTTP de FastAPI para recibir el feedback manual del frontend.
+    Invoca el caso de uso para almacenar la puntuación bajo la métrica 'user-feedback' en Langfuse.
+    """
     try:
         feedback_use_case.execute(payload)
         return {"status": "success", "message": "Feedback registrado exitosamente."}
@@ -89,4 +122,5 @@ async def user_feedback_endpoint(payload: RecordUserFeedbackInput):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Fallo al registrar feedback: {str(e)}")
+
 

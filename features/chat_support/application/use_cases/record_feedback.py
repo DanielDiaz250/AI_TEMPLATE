@@ -10,11 +10,26 @@ class RecordUserFeedbackInput(BaseModel):
 
 
 class RecordUserFeedbackUseCase:
-    """Caso de uso para registrar el feedback directo brindado por el usuario en la interfaz."""
+    """
+    Caso de uso para registrar el feedback directo brindado por el usuario en la interfaz.
+    Recibe la calificación manual y la almacena en el colector de telemetría asociado a la traza.
+    """
     def __init__(self, telemetry: TelemetryPort):
+        """
+        Inicializa el caso de uso inyectando el puerto de telemetría.
+
+        Args:
+            telemetry (TelemetryPort): Adaptador para almacenar el score de feedback.
+        """
         self.telemetry = telemetry
 
     def execute(self, input_data: RecordUserFeedbackInput) -> None:
+        """
+        Ejecuta el registro de feedback del usuario en la traza.
+
+        Args:
+            input_data (RecordUserFeedbackInput): Datos conteniendo trace_id, calificación (1 o 0) y comentario.
+        """
         if not input_data.trace_id:
             raise ValueError("El trace_id es requerido para registrar feedback.")
             
